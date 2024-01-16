@@ -1,24 +1,30 @@
 #==================================================	
-#                 Project structure
+#                 Root variables
 #==================================================	
 
-TARGET=hello_world
+# The follow variables should be specified according 
+# to your file system and actual versions of libraries:
 
 # Path to the arduino installation:
-ARDUINO_DIR=$(HOME)/Library/Arduino15/packages/arduino
-
-# Path to the directory with already installed arduino libraries:
-LIBS_DIR=$(HOME)/Projects/Arduino/libraries
+# ARDUINO_DIR=$(HOME)/Library/Arduino15/packages/arduino
+ARDUINO_DIR=
 
 # Path to the directory with avr binaries:
-AVR_DIR=$(ARDUINO_DIR)/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/bin
+# AVR_DIR=$(ARDUINO_DIR)/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/bin
+AVR_DIR=
+
+# Path to the directory with hardware libs:
+# ARDUINO_HARDWARE_DIR=$(ARDUINO_DIR)/hardware/avr/1.8.6
+ARDUINO_HARDWARE_DIR=
+
+# Path to the directory with already installed arduino libraries:
+# LIBS_DIR=$(HOME)/Arduino/libraries
+LIBS_DIR=
 
 # Path to the ArdensPlayer - arduboy emmulator, to run the final *.hex file.
 # Reed more here: https://github.com/tiberiusbrown/Ardens
-ARDENS=$(HOME)/Projects/Arduino/Ardens/ArdensPlayer
-
-# Path to the directory with hardware libs:
-ARDUINO_HARDWARE_DIR=$(ARDUINO_DIR)/hardware/avr/1.8.6
+# ARDENS=$(HOME)/Arduino/Ardens/ArdensPlayer
+ARDENS=
 
 # Path to the directory with core lib sources:
 ARDUINO_CORE_DIR=$(ARDUINO_HARDWARE_DIR)/cores/arduino
@@ -29,7 +35,11 @@ ARDUINO_EEPROM=$(ARDUINO_HARDWARE_DIR)/libraries/EEPROM/src
 # Path to the directory with Arduboy2 sources:
 ARDUBOY2_DIR=$(LIBS_DIR)/Arduboy2/src
 
-# Project structure:
+#==================================================	
+#                 Project structure
+#==================================================	
+
+TARGET=hello_world
 SRC_DIR=./src
 OUTPUT_DIR=./output
 
@@ -43,15 +53,18 @@ CC=$(AVR_DIR)/avr-gcc
 # The c++ compiler
 CPP=$(AVR_DIR)/avr-g++
 
+# Tool to build *.hex files:
+OBJCPY=$(AVR_DIR)/avr-objcopy
+
 # The compilers options:
 
-# Arduboy is equal to Leaonardo, which is atmega32u4;
+# Arduboy is equal to Arduino Leaonardo, which is atmega32u4;
 MCU=-mmcu=atmega32u4
-#
+
 # CPU speed for Leonardo is:
 CPU_SPEED=-DF_CPU=16000000UL
 
-# Add add directories with headers:
+# Add directories with headers:
 HEADERS=-I$(ARDUINO_CORE_DIR) -I$(ARDUINO_HARDWARE_DIR)/variants/leonardo -I$(ARDUINO_EEPROM)
 
 # The common for gcc and  g++ compilers flags:
@@ -89,19 +102,20 @@ CPPFLAGS = $(CFLAGS) \
 	   -fpermissive \
 
 # The linker options:
+# It is important to specify the MCU type when linking. The compiler uses the -mmcu option 
+# to choose start-up files and run-time libraries that get linked together. If this option 
+# isn't specified, the compiler defaults to the 8515 processor environment, which is most 
+# certainly what you didn't want.
 LDFLAGS = $(MCU)
-
-# Tool to build *.hex files:
-OBJCPY=$(AVR_DIR)/avr-objcopy
 
 #==================================================	
 #              Compile core library
 #==================================================	
 
-# Sources:
+# Arduino core sources includes c, c++ and asm files:
 ARDUINO_CORE_SRC:=$(notdir $(wildcard $(ARDUINO_CORE_DIR)/*.S) $(wildcard $(ARDUINO_CORE_DIR)/*.c) $(wildcard $(ARDUINO_CORE_DIR)/*.cpp))
 
-# Output directory:
+# Output directory for Arduino core:
 OUTPUT_CORE=$(OUTPUT_DIR)/core
 
 # List of object files:
@@ -109,26 +123,26 @@ ARDUINO_CORE_OBJ=$(ARDUINO_CORE_SRC:%=$(OUTPUT_CORE)/%.o)
 
 #Additional compiler options:
 
-# Arduino core has assembler files, so, we have to be ready to compile them
+# Arduino core has assembler files, so, we have to be ready to compile them:
 ASM=-xassembler-with-cpp
-# List of arduino options:
+# List of arduino specific options:
 DARDUINO=-DARDUINO=10607 -DARDUINO_AVR_LEONARDO -DARDUINO_ARCH_AVR
-# List of USB options:
+# List of USB specific options:
 DUSB=-DUSB_VID=0x2341 -DUSB_PID=0x8036 -DUSB_MANUFACTURER="\"Unknown\"" -DUSB_PRODUCT="\"Arduino Leonardo\""
 
 # Create directory if it doesn't exist:
 $(OUTPUT_CORE):
 	[ -d $(OUTPUT_CORE) ] || mkdir -p $(OUTPUT_CORE)
 
-# Compile *.S files in the core lib:
+# Compile assembler *.S files from the core lib:
 $(OUTPUT_CORE)/%.S.o: $(ARDUINO_CORE_DIR)/%.S 
 	$(CC) $(MCU) $(ASM) -c $< -o $@
 
-# Compile *.c files in the core lib:
+# Compile *.c files from the core lib:
 $(OUTPUT_CORE)/%.c.o: $(ARDUINO_CORE_DIR)/%.c 
 	$(CC) $(CFLAGS) $(DARDUINO) $(DUSB) -c $< -o $@
 
-# Compile *.cpp files in the core lib:
+# Compile *.cpp files from the core lib:
 $(OUTPUT_CORE)/%.cpp.o: $(ARDUINO_CORE_DIR)/%.cpp 
 	$(CPP) $(CPPFLAGS) $(DARDUINO) $(DUSB) -c $< -o $@
 
@@ -141,7 +155,7 @@ core: $(OUTPUT_CORE) $(ARDUINO_CORE_OBJ)
 #                Compile Arduboy2
 #==================================================	
 
-# Sources (arduboy uses only *.cpp files):
+# Sources of the Arduboy2 library (arduboy2 uses only *.cpp files):
 ARDUBOY2_SRC:=$(notdir $(wildcard $(ARDUBOY2_DIR)/*.cpp))
 
 # Output directory:
@@ -154,7 +168,7 @@ ARDUBOY2_OBJ=$(ARDUBOY2_SRC:%=$(OUTPUT_ARDUBOY2)/%.o)
 $(OUTPUT_ARDUBOY2):
 	[ -d $(OUTPUT_ARDUBOY2) ] || mkdir -p $(OUTPUT_ARDUBOY2)
 
-# Compile *.cpp files in the core lib:
+# Compile *.cpp files from the arduboy2 lib:
 $(OUTPUT_ARDUBOY2)/%.cpp.o: $(ARDUBOY2_DIR)/%.cpp
 	$(CPP) $(CPPFLAGS) -c $< -o $@
 
@@ -170,19 +184,18 @@ arduboy2: $(OUTPUT_ARDUBOY2) $(ARDUBOY2_OBJ)
 # Sources:
 SRC=$(notdir $(wildcard $(SRC_DIR)/*.cpp))
 
-# List of all object files from the project and dependencies:
+# List of object files:
 OBJ=$(SRC:%=$(OUTPUT_DIR)/%.o)
-
 
 # Create directory if it doesn't exist:
 $(OUTPUT_DIR):
 	[ -d $(OUTPUT_DIR) ] || mkdir -p $(OUTPUT_DIR)
 
-# Compile *.cpp files in the core lib:
+# Compile *.cpp files:
 $(OUTPUT_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp
 	$(CPP) $(CPPFLAGS) -I$(ARDUBOY2_DIR) -c $< -o $@
 
-# Link all together:
+# Link everything together:
 compile: $(OUTPUT_DIR) $(OBJ) core arduboy2
 	$(CPP) $(LDFLAGS) -o $(OUTPUT_DIR)/$(TARGET) $(OBJ) $(ARDUINO_CORE_OBJ) $(ARDUBOY2_OBJ)
 	@echo '=============================================='
