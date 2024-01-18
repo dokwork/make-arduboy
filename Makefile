@@ -18,12 +18,12 @@ AVR_DIR=
 ARDUINO_HARDWARE_DIR=
 
 # Path to the directory with already installed arduino libraries:
-# LIBS_DIR=$(HOME)/Arduino/libraries
+# LIBS_DIR=$(HOME)/Projects/Arduino/libraries
 LIBS_DIR=
 
 # Path to the ArdensPlayer - arduboy emmulator, to run the final *.hex file.
 # Reed more here: https://github.com/tiberiusbrown/Ardens
-# ARDENS=$(HOME)/Arduino/Ardens/ArdensPlayer
+# ARDENS=$(HOME)/Projects/Arduino/Ardens/ArdensPlayer
 ARDENS=
 
 # Path to the directory with core lib sources:
@@ -106,7 +106,7 @@ CPPFLAGS = $(CFLAGS) \
 # to choose start-up files and run-time libraries that get linked together. If this option 
 # isn't specified, the compiler defaults to the 8515 processor environment, which is most 
 # certainly what you didn't want.
-LDFLAGS = $(MCU)
+LDFLAGS = $(MCU) -Os -flto -fuse-linker-plugin
 
 #==================================================	
 #              Compile core library
@@ -128,23 +128,23 @@ ASM=-xassembler-with-cpp
 # List of arduino specific options:
 DARDUINO=-DARDUINO=10607 -DARDUINO_AVR_LEONARDO -DARDUINO_ARCH_AVR
 # List of USB specific options:
-DUSB=-DUSB_VID=0x2341 -DUSB_PID=0x8036 -DUSB_MANUFACTURER="\"Unknown\"" -DUSB_PRODUCT="\"Arduino Leonardo\""
+DUSB=-DUSB_VID=0x2341 -DUSB_PID=0x8036
 
 # Create directory if it doesn't exist:
 $(OUTPUT_CORE):
-	[ -d $(OUTPUT_CORE) ] || mkdir -p $(OUTPUT_CORE)
+	@[ -d $(OUTPUT_CORE) ] || mkdir -p $(OUTPUT_CORE)
 
 # Compile assembler *.S files from the core lib:
-$(OUTPUT_CORE)/%.S.o: $(ARDUINO_CORE_DIR)/%.S 
-	$(CC) $(MCU) $(ASM) -c $< -o $@
+$(OUTPUT_CORE)/%.S.o: $(ARDUINO_CORE_DIR)/%.S
+	$(CC) $(MCU) $(ASM) -c -o $@ $<
 
 # Compile *.c files from the core lib:
 $(OUTPUT_CORE)/%.c.o: $(ARDUINO_CORE_DIR)/%.c 
-	$(CC) $(CFLAGS) $(DARDUINO) $(DUSB) -c $< -o $@
+	$(CC) $(CFLAGS) $(DARDUINO) $(DUSB) -c -o $@ $<
 
 # Compile *.cpp files from the core lib:
-$(OUTPUT_CORE)/%.cpp.o: $(ARDUINO_CORE_DIR)/%.cpp 
-	$(CPP) $(CPPFLAGS) $(DARDUINO) $(DUSB) -c $< -o $@
+$(OUTPUT_CORE)/%.cpp.o: $(ARDUINO_CORE_DIR)/%.cpp
+	$(CPP) $(CPPFLAGS) $(DARDUINO) $(DUSB) -c -o $@ $<
 
 core: $(OUTPUT_CORE) $(ARDUINO_CORE_OBJ)
 	@echo '----------------------------------------------'
@@ -166,13 +166,13 @@ ARDUBOY2_OBJ=$(ARDUBOY2_SRC:%=$(OUTPUT_ARDUBOY2)/%.o)
 
 # Create directory if it doesn't exist:
 $(OUTPUT_ARDUBOY2):
-	[ -d $(OUTPUT_ARDUBOY2) ] || mkdir -p $(OUTPUT_ARDUBOY2)
+	@[ -d $(OUTPUT_ARDUBOY2) ] || mkdir -p $(OUTPUT_ARDUBOY2)
 
 # Compile *.cpp files from the arduboy2 lib:
-$(OUTPUT_ARDUBOY2)/%.cpp.o: $(ARDUBOY2_DIR)/%.cpp
-	$(CPP) $(CPPFLAGS) -c $< -o $@
+$(OUTPUT_ARDUBOY2)/%.cpp.o: $(ARDUBOY2_DIR)/%.cpp $(OUTPUT_ARDUBOY2)
+	$(CPP) $(CPPFLAGS) -c -o $@ $<
 
-arduboy2: $(OUTPUT_ARDUBOY2) $(ARDUBOY2_OBJ)
+arduboy2: $(ARDUBOY2_OBJ)
 	@echo '----------------------------------------------'
 	@echo '    Arduboy2 has been compiled successfully'
 	@echo '----------------------------------------------'
@@ -184,24 +184,34 @@ arduboy2: $(OUTPUT_ARDUBOY2) $(ARDUBOY2_OBJ)
 # Sources:
 SRC=$(notdir $(wildcard $(SRC_DIR)/*.cpp))
 
-# List of object files:
-OBJ=$(SRC:%=$(OUTPUT_DIR)/%.o)
+# List of all object files:
+OBJ=$(ARDUINO_CORE_OBJ) $(ARDUBOY2_OBJ) $(SRC:%=$(OUTPUT_DIR)/%.o)
 
 # Create directory if it doesn't exist:
 $(OUTPUT_DIR):
-	[ -d $(OUTPUT_DIR) ] || mkdir -p $(OUTPUT_DIR)
+	@[ -d $(OUTPUT_DIR) ] || mkdir -p $(OUTPUT_DIR)
 
 # Compile *.cpp files:
 $(OUTPUT_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp
-	$(CPP) $(CPPFLAGS) -I$(ARDUBOY2_DIR) -c $< -o $@
+	$(CPP) $(CPPFLAGS) -I$(ARDUBOY2_DIR) -c -o $@ $<
 
 # Link everything together:
-compile: $(OUTPUT_DIR) $(OBJ) core arduboy2
-	$(CPP) $(LDFLAGS) -o $(OUTPUT_DIR)/$(TARGET) $(OBJ) $(ARDUINO_CORE_OBJ) $(ARDUBOY2_OBJ)
+compile: CC:=./compiler_proxy.sh proxy $(OUTPUT_DIR) $(CC)
+compile: CPP:=./compiler_proxy.sh proxy $(OUTPUT_DIR) $(CPP)
+compile: $(OUTPUT_DIR) core arduboy2 $(OBJ)
+	@$(CPP) $(LDFLAGS) -o $(OUTPUT_DIR)/$(TARGET) $(OBJ)
 	@echo '=============================================='
 	@echo '    $(TARGET) has been built successfully.'
 	@echo '               Congratulations!'
 	@echo '=============================================='
+
+compile_commands.objs: compile
+
+compile_commands.json: compile_commands.objs
+	./compiler_proxy.sh complete $(OUTPUT_DIR)
+	@echo '----------------------------------------------'
+	@echo ' File compile_commands.json has been created'
+	@echo '----------------------------------------------'
 
 # Create the hex file:
 hex: compile
@@ -211,7 +221,10 @@ hex: compile
 run: hex
 	$(ARDENS) file=$(OUTPUT_DIR)/$(TARGET).hex
 
-upload:
+size: hex
+	@$(AVR_DIR)/avr-size -A $(OUTPUT_DIR)/$(TARGET) $(OUTPUT_DIR)/$(TARGET).hex
+
+upload: hex
 	@echo 'Not implemented yet'
 
 # Clean up the project:
