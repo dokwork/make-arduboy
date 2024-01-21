@@ -118,11 +118,13 @@ CPPFLAGS = $(CFLAGS) \
 	   -fpermissive \
 
 # The linker options:
-# It is important to specify the MCU type when linking. The compiler uses the -mmcu option 
-# to choose start-up files and run-time libraries that get linked together. If this option 
-# isn't specified, the compiler defaults to the 8515 processor environment, which is most 
-# certainly what you didn't want.
-LDFLAGS = $(MCU) -Os -flto -fuse-linker-plugin
+# -mmcu 	      - It is important to specify the MCU type when linking. The compiler uses the -mmcu option 
+# 		  	to choose start-up files and run-time libraries that get linked together. If this option 
+# 		  	isn't specified, the compiler defaults to the 8515 processor environment, which is most 
+# 		  	certainly what you didn't want.
+# -Wl,--gc-sections   - This will perform a garbage collection of code and data never referenced. 
+#  			See https://gcc.gnu.org/onlinedocs/gnat_ugn/Compilation-options.html for more details.
+LDFLAGS = $(MCU) -Os -flto -fuse-linker-plugin -Wl,--gc-sections -lm
 
 #==================================================	
 #              Compile core library
@@ -209,7 +211,7 @@ $(OUTPUT_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp
 
 # Link everything together:
 compile: $(OUTPUT_DIR) core arduboy2 $(OBJ)
-	@$(CPP) $(LDFLAGS) -o $(OUTPUT_DIR)/$(TARGET) $(OBJ)
+	@$(CPP) $(LDFLAGS) -o $(OUTPUT_DIR)/$(TARGET).elf $(OBJ)
 	@echo 'The project $(TARGET) has been built successfully'
 
 compile_commands.objs: compile
@@ -222,19 +224,24 @@ compile_commands.json: clean compile_commands.objs
 	@# Close array declaration:
 	@echo ']' >> $(OUTPUT_DIR)/compile_commands.objs
 	@# Move the completed compile_commands.json to the pwd:
-	@cp $(OUTPUT_DIR)/compile_commands.objs compile_commands.json
+	@mv $(OUTPUT_DIR)/compile_commands.objs compile_commands.json
 	@echo 'The file compile_commands.json has been created'
 
 # Create the hex file:
+# -j 	- Copy only the named section from the input file to the output file.
+# -R 	- Remove any section named sectionname from the output file.
 hex: compile
-	$(OBJCPY) -O ihex -R .eeprom $(OUTPUT_DIR)/$(TARGET) $(OUTPUT_DIR)/$(TARGET).hex
+	@$(OBJCPY) -O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings \
+		--change-section-lma .eeprom=0 $(OUTPUT_DIR)/$(TARGET).elf $(OUTPUT_DIR)/$(TARGET).eep
+	@$(OBJCPY) -O ihex -R .eeprom $(OUTPUT_DIR)/$(TARGET).elf $(OUTPUT_DIR)/$(TARGET).hex
+	@$(AVR_DIR)/avr-size -A $(OUTPUT_DIR)/$(TARGET).hex
 
 # Run the final hex file in the emulator:
 emulate: hex
 	$(ARDENS) file=$(OUTPUT_DIR)/$(TARGET).hex
 
 size: hex
-	@$(AVR_DIR)/avr-size -A $(OUTPUT_DIR)/$(TARGET) $(OUTPUT_DIR)/$(TARGET).hex
+	@$(AVR_DIR)/avr-size -A $(OUTPUT_DIR)/$(TARGET).hex
 
 upload: hex
 	@echo 'Not implemented yet'
@@ -244,5 +251,7 @@ clean:
 	rm -f compile_commands.json
 	rm -rf $(OUTPUT_DIR)
 
-.PHONY: compile hex emulate size upload clean
-.DEFAULT_GOAL := compile_commands.json
+build: clean compile_commands.json hex
+
+.PHONY: build compile hex emulate size upload clean
+.DEFAULT_GOAL := build

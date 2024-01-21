@@ -17,7 +17,9 @@ The Makefile provides follow tasks:
  - `make size` shows the size of the binary file and \*.hex file;
  - `make compile_commands.json` creates a compilation database as a `compile_commands.json` file;
  - `make emulate` runs project in ArdensPlayer;
- - `make upload` to upload project to the board **NOT IMPLEMENTED YET**
+ - `make upload` to upload project to the board **NOT IMPLEMENTED YET**;
+ - `make build` aggregates follow tasks: `clean`, `compile_commands.json`, and `hex`; 
+                This is _default_ task.
 
 ## Set user specific variables
 
@@ -130,5 +132,3 @@ when compiling files. But, it doesn't produce the `compile_commands.json` by
 default. To generate that file run `make compile_commands.json` command. To make
 the content of this file valid, we have to be sure that every file will be
 compiled. This is why the target `compile_commands.json` depends on clean task.
-
-Notice, that the `compile_commands.json` task is default.
