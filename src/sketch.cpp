@@ -1,8 +1,7 @@
-/**
- * The simplest example of the arduboy project.
- */
 #include <Arduboy2.h>
 #include <Arduino.h>
+#include "hello/hello.h"
+
 Arduboy2 arduboy;
 
 void
@@ -10,7 +9,7 @@ setup ()
 {
   arduboy.begin ();
   arduboy.clear ();
-  arduboy.print ("Hello world!");
+  arduboy.print (say_hello());
   arduboy.display ();
 }
 

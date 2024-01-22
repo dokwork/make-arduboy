@@ -1,30 +1,56 @@
 #==================================================	
-#             User specific variables
+#             Required variables
 #==================================================	
 
 # The follow variables should be specified according 
-# to your file system and actual versions of libraries:
+# to your file system:
+
+# The title of the project:
+# (it would be better to avoid using space symbols, 
+# because this variable will be used as a name of the
+# final binary files)
+TITLE=hello
 
 # Path to the arduino installation:
-# ARDUINO_DIR=$(HOME)/Library/Arduino15/packages/arduino
+# Example: $(HOME)/Library/Arduino15/packages/arduino
 ARDUINO_DIR=
 
-# Path to the directory with avr binaries:
-# AVR_DIR=$(ARDUINO_DIR)/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/bin
-AVR_DIR=
-
-# Path to the directory with hardware libs:
-# ARDUINO_HARDWARE_DIR=$(ARDUINO_DIR)/hardware/avr/1.8.6
-ARDUINO_HARDWARE_DIR=
-
 # Path to the directory with already installed arduino libraries:
-# LIBS_DIR=$(HOME)/Projects/Arduino/libraries
-LIBS_DIR=
+# Example: $(HOME)/Projects/Arduino/libraries
+ARDUINO_LIBS_DIR=
+
+#==================================================	
+#             Optional variables
+#==================================================	
+
+# If you want run tests on your machine, uncomment
+# this line:
+# (to run tests locally, they should not depends
+# on arduino as all!)
+# LOCAL_TEST=true
+
+# Path to the sources of a test library:
+# Example: $(HOME)/Projects/Arduino/Unity
+# TEST_FRAMEWORK_DIR=
 
 # Path to the ArdensPlayer - arduboy emmulator, to run the final *.hex file.
+# (optional. If not set, then the target `emulate` will be unavailable)
+# Example: $(HOME)/Projects/Arduino/Ardens/Ardens
 # Reed more here: https://github.com/tiberiusbrown/Ardens
-# ARDENS=$(HOME)/Projects/Arduino/Ardens/ArdensPlayer
-ARDENS=
+# ARDENS=
+
+#==================================================	
+#             Relative paths
+#==================================================	
+
+# Please, verify version of the libs and tools.
+# They may be out of date!
+
+# Path to the directory with avr binaries:
+AVR_DIR=$(ARDUINO_DIR)/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7
+
+# Path to the directory with hardware libs:
+ARDUINO_HARDWARE_DIR=$(ARDUINO_DIR)/hardware/avr/1.8.6
 
 # Path to the directory with core lib sources:
 ARDUINO_CORE_DIR=$(ARDUINO_HARDWARE_DIR)/cores/arduino
@@ -33,44 +59,74 @@ ARDUINO_CORE_DIR=$(ARDUINO_HARDWARE_DIR)/cores/arduino
 ARDUINO_EEPROM=$(ARDUINO_HARDWARE_DIR)/libraries/EEPROM/src
 
 # Path to the directory with Arduboy2 sources:
-ARDUBOY2_DIR=$(LIBS_DIR)/Arduboy2/src
+ARDUBOY2_DIR=$(ARDUINO_LIBS_DIR)/Arduboy2/src
+
+# A target to show variables:
+# Example: make print-ARDUINO_DIR
+print-%  : ; @echo $* = $($*)
 
 #==================================================	
 #                 Project structure
 #==================================================	
 
-TARGET=hello_world
-SRC_DIR=./src
-OUTPUT_DIR=./output
+
+# The current working directory:
+CWD=$(shell pwd)
+
+SRC_DIR=src
+TEST_DIR=test
+OUTPUT_DIR=output
+OUTPUT_AVR=$(OUTPUT_DIR)/avr
+OUTPUT_DEV=$(OUTPUT_DIR)/dev
+
+# Prepare the project:
+# - validate variables;
+# - create the symbolic links;
+.PHONY: init
+init:
+ifndef ARDUINO_DIR
+	$(error 'Variable ARDUINO_DIR must be specified.')
+endif
+ifndef ARDUINO_LIBS_DIR
+	$(error 'Variable ARDUINO_LIBS_DIR must be specified.')
+endif
+	@[ -d $(OUTPUT_DIR) ] 			|| mkdir -p $(OUTPUT_DIR)
+	@touch $(OUTPUT_DIR)/compile_commands.objs
+	@[ -d $(CWD)/libs ] 			|| mkdir $(CWD)/libs
+	@[ -d $(CWD)/libs/arduino ] 		|| ln -s $(ARDUINO_CORE_DIR) 	$(CWD)/libs/arduino
+	@[ -d $(CWD)/libs/arduboy2 ] 		|| ln -s $(ARDUBOY2_DIR) 	$(CWD)/libs/arduboy2
+ifdef TEST_FRAMEWORK_DIR
+	@[ -d $(CWD)/libs/test_framework ] 	|| ln -s $(TEST_FRAMEWORK_DIR) 	$(CWD)/libs/test_framework
+endif
 
 #==================================================	
-#             Compilation settings
+#        Compilation and build settings
 #==================================================	
 
 # The c compiler
-CC=$(AVR_DIR)/avr-gcc
+CC=$(AVR_DIR)/bin/avr-gcc
 
 # The c++ compiler
-CPP=$(AVR_DIR)/avr-g++
+CPP=$(AVR_DIR)/bin/avr-g++
+
+ifdef LOCAL_TEST
+# Compilers to build local tests:
+GCC=gcc
+GCPP=g++
+endif
 
 # Tool to build *.hex files:
-OBJCPY=$(AVR_DIR)/avr-objcopy
+OBJCPY=$(AVR_DIR)/bin/avr-objcopy
 
-# The current working directory:
-PWD=$(shell pwd)
+# Tool to get size of the result:
+AVR_SIZE=$(AVR_DIR)/bin/avr-size
 
-# The function to run compiler, generate a command object, 
-# and append it to the $(OUTPUT_DIR)/compile_commands.objs
-# file.
-# Arguments:
-# 1 - a source file
-# 2 - output file
-# 3 - compiler
-# 4 - compiler's flags
-compile= echo '{ "directory": "$(PWD)", "file": "$1", "output": "$2", "command": "$3 $4" }'\
-	>> $(OUTPUT_DIR)/compile_commands.objs\
-	&& $3 $4 -c -o $2 $1\
-	&& echo '$1 has been compiled'
+# From: $(ARDUINO_DIR)/packages/arduino/hardware/avr/1.8.6/boards.txt
+# leonardo.upload.maximum_size=28672
+# leonardo.upload.maximum_data_size=2560
+MAXIMUM_SIZE=28672
+MAXIMUM_DATA_SIZE=2560
+
 
 # The compilers options:
 
@@ -80,8 +136,23 @@ MCU=-mmcu=atmega32u4
 # CPU speed for Leonardo is:
 CPU_SPEED=-DF_CPU=16000000UL
 
+# List of arduino specific options:
+DARDUINO=-DARDUINO=10607 -DARDUINO_AVR_LEONARDO -DARDUINO_ARCH_AVR
+
+# List of USB specific options:
+DUSB=-DUSB_VID=0x2341 -DUSB_PID=0x8036
+
 # Add directories with headers:
-HEADERS=-I$(ARDUINO_CORE_DIR) -I$(ARDUINO_HARDWARE_DIR)/variants/leonardo -I$(ARDUINO_EEPROM)
+INCLUDE=-I$(AVR_DIR)/avr/include 			\
+	-I$(ARDUINO_HARDWARE_DIR)/variants/leonardo 	\
+	-I$(ARDUINO_EEPROM) 				\
+	-I$(ARDUINO_CORE_DIR)   			\
+	-I$(ARDUBOY2_DIR) 				\
+	-I$(SRC_DIR)
+
+ifdef TEST_FRAMEWORK_DIR
+INCLUDE_TEST_FRAMEWORK=-I$(TEST_FRAMEWORK_DIR)
+endif
 
 # The common for gcc and  g++ compilers flags:
 # -Os 				- Optimize for size;
@@ -98,12 +169,14 @@ HEADERS=-I$(ARDUINO_CORE_DIR) -I$(ARDUINO_HARDWARE_DIR)/variants/leonardo -I$(AR
 #  				  unused functions at link time.
 # -fdata-sections		  Enables the generation of one ELF section for each variable in the 
 #  				  source file.
-CFLAGS= -Os -MMD -flto \
-	-ffunction-sections \
-	-fdata-sections \
-	$(MCU) \
-	$(CPU_SPEED) \
-	$(HEADERS)
+CFLAGS= -Os -MMD -flto 		\
+	-ffunction-sections 	\
+	-fdata-sections 	\
+	$(MCU) 			\
+	$(CPU_SPEED) 		\
+	$(DARDUINO) 		\
+	$(DUSB) 		\
+	$(INCLUDE)
 
 # C++ specified flags:
 # -fno-threadsafe-statics 	- Do not emit the extra code to use the routines specified in 
@@ -124,47 +197,84 @@ CPPFLAGS = $(CFLAGS) \
 # 		  	certainly what you didn't want.
 # -Wl,--gc-sections   - This will perform a garbage collection of code and data never referenced. 
 #  			See https://gcc.gnu.org/onlinedocs/gnat_ugn/Compilation-options.html for more details.
-LDFLAGS = $(MCU) -Os -flto -fuse-linker-plugin -Wl,--gc-sections -lm
+LDFLAGS = -fuse-linker-plugin $(MCU) -Os -flto -Wl,--gc-sections
+
+# Arduino core has assembler files, so, we have to be ready to compile them:
+ASM=-xassembler-with-cpp
+
+ifdef LOCAL_TEST
+# Flags to check memory on test:
+ASANFLAGS  = 	-fsanitize=address \
+		-fno-common \
+		-fno-omit-frame-pointer
+endif
+
+# The function to run compiler, generate a command object, 
+# and append it to the $(OUTPUT_DIR)/compile_commands.objs file
+# only if it doesn't contain a record about the source file.
+# Arguments:
+# 1 - a source file
+# 2 - output file
+# 3 - compiler
+# 4 - compiler's flags
+# How it works:
+# - The first grep checks is the file already contains a command for the source
+#   file;
+# - If not, the record about compilation command is inserted to the file;
+# - Then compilation is run.
+compile=(grep -qF '"file": "$1"' $(OUTPUT_DIR)/compile_commands.objs || \
+	echo '{ "directory": "$(PWD)", "file": "$1", "output": "$2", "command": "$3 $4" }' \
+	>> $(OUTPUT_DIR)/compile_commands.objs) \
+	&& $3 $4 -c -o $2 $1
+
+# Compile assembler *.S files for avr platform:
+$(OUTPUT_AVR)/%.S.o: $(CWD)/%.S
+	@mkdir -p $(@D)
+	@$(call compile,$<,$@,$(CC),$(MCU) $(ASM))
+	@echo '$< has been compiled'
+
+# Compile *.c files for avr platform:
+$(OUTPUT_AVR)/%.c.o: $(CWD)/%.c 
+	@mkdir -p $(@D)
+	@$(call compile,$<,$@,$(CC),$(CFLAGS))
+	@echo '$< has been compiled'
+
+# Compile *.cpp files for avr platform:
+$(OUTPUT_AVR)/%.cpp.o: $(CWD)/%.cpp
+	@mkdir -p $(@D)
+	@$(call compile,$<,$@,$(CPP),$(CPPFLAGS))
+	@echo '$< has been compiled'
+
+$(OUTPUT_AVR)/%.d: $(OUTPUT_AVR)/%.o
+
+
+ifdef LOCAL_TEST
+# Compile *.c files for tests:
+$(OUTPUT_DEV)/%.c.o: $(CWD)/%.c 
+	@mkdir -p $(@D)
+	@$(call compile,$<,$@,$(GCC),-g $(INCLUDE_TEST_FRAMEWORK) -I$(SRC_DIR))
+	@echo '$< has been recompiled for test'
+
+# Compile *.cpp files for tests:
+$(OUTPUT_DEV)/%.cpp.o: $(CWD)/%.cpp
+	@mkdir -p $(@D)
+	@$(call compile,$<,$@,$(GCPP),-g $(INCLUDE_TEST_FRAMEWORK) -I$(SRC_DIR))
+	@echo '$< has been recompiled for test'
+endif
 
 #==================================================	
 #              Compile core library
 #==================================================	
 
 # Arduino core sources includes c, c++ and asm files:
-ARDUINO_CORE_SRC:=$(notdir $(wildcard $(ARDUINO_CORE_DIR)/*.S) $(wildcard $(ARDUINO_CORE_DIR)/*.c) $(wildcard $(ARDUINO_CORE_DIR)/*.cpp))
-
-# Output directory for Arduino core:
-OUTPUT_CORE=$(OUTPUT_DIR)/core
+ARDUINO_CORE_SRC:=$(shell cd $(ARDUINO_CORE_DIR); find . -name '*.cpp' -or -name '*.c')
 
 # List of object files:
-ARDUINO_CORE_OBJ=$(ARDUINO_CORE_SRC:%=$(OUTPUT_CORE)/%.o)
+ARDUINO_CORE_OBJS=$(ARDUINO_CORE_SRC:./%=$(OUTPUT_AVR)/libs/arduino/%.o)
 
-#Additional compiler options:
-
-# Arduino core has assembler files, so, we have to be ready to compile them:
-ASM=-xassembler-with-cpp
-# List of arduino specific options:
-DARDUINO=-DARDUINO=10607 -DARDUINO_AVR_LEONARDO -DARDUINO_ARCH_AVR
-# List of USB specific options:
-DUSB=-DUSB_VID=0x2341 -DUSB_PID=0x8036
-
-# Create directory if it doesn't exist:
-$(OUTPUT_CORE):
-	@[ -d $(OUTPUT_CORE) ] || mkdir -p $(OUTPUT_CORE)
-
-# Compile assembler *.S files from the core lib:
-$(OUTPUT_CORE)/%.S.o: $(ARDUINO_CORE_DIR)/%.S
-	@$(call compile,$<,$@,$(CC),$(MCU) $(ASM))
-
-# Compile *.c files from the core lib:
-$(OUTPUT_CORE)/%.c.o: $(ARDUINO_CORE_DIR)/%.c 
-	@$(call compile,$<,$@,$(CC),$(CFLAGS) $(DARDUINO) $(DUSB))
-
-# Compile *.cpp files from the core lib:
-$(OUTPUT_CORE)/%.cpp.o: $(ARDUINO_CORE_DIR)/%.cpp
-	@$(call compile,$<,$@,$(CPP),$(CPPFLAGS) $(DARDUINO) $(DUSB))
-
-core: $(OUTPUT_CORE) $(ARDUINO_CORE_OBJ)
+.PHONY: arduino
+arduino: OUTPUT_DIR:=$(OUTPUT_AVR)/libs/arduino
+arduino: clean $(ARDUINO_CORE_OBJS)
 	@echo 'Arduino core has been compiled successfully'
 
 #==================================================	
@@ -172,23 +282,14 @@ core: $(OUTPUT_CORE) $(ARDUINO_CORE_OBJ)
 #==================================================	
 
 # Sources of the Arduboy2 library (arduboy2 uses only *.cpp files):
-ARDUBOY2_SRC:=$(notdir $(wildcard $(ARDUBOY2_DIR)/*.cpp))
-
-# Output directory:
-OUTPUT_ARDUBOY2=$(OUTPUT_DIR)/arduboy2
+ARDUBOY2_SRC:=$(shell cd $(ARDUBOY2_DIR); find . -name '*.cpp' -or -name '*.c')
 
 # List of object files:
-ARDUBOY2_OBJ=$(ARDUBOY2_SRC:%=$(OUTPUT_ARDUBOY2)/%.o)
+ARDUBOY2_OBJS=$(ARDUBOY2_SRC:./%=$(OUTPUT_AVR)/libs/arduboy2/%.o)
 
-# Create directory if it doesn't exist:
-$(OUTPUT_ARDUBOY2):
-	@[ -d $(OUTPUT_ARDUBOY2) ] || mkdir -p $(OUTPUT_ARDUBOY2)
-
-# Compile *.cpp files from the arduboy2 lib:
-$(OUTPUT_ARDUBOY2)/%.cpp.o: $(ARDUBOY2_DIR)/%.cpp $(OUTPUT_ARDUBOY2)
-	@$(call compile,$<,$@,$(CPP),$(CPPFLAGS))
-
-arduboy2: $(ARDUBOY2_OBJ)
+.PHONY: arduboy2
+arduboy2: OUTPUT_DIR:=$(OUTPUT_AVR)/libs/arduboy2
+arduboy2: clean $(ARDUBOY2_OBJS)
 	@echo 'Arduboy2 has been compiled successfully'
 
 #==================================================	
@@ -196,62 +297,134 @@ arduboy2: $(ARDUBOY2_OBJ)
 #==================================================	
 
 # Sources:
-SRC=$(notdir $(wildcard $(SRC_DIR)/*.cpp))
+# here we use `find` instead of wildcard to find all files 
+# including files in sub directories:
+SRC=$(shell cd $(SRC_DIR); find . -name '*.cpp' -or -name '*.c')
 
 # List of all object files:
-OBJ=$(ARDUINO_CORE_OBJ) $(ARDUBOY2_OBJ) $(SRC:%=$(OUTPUT_DIR)/%.o)
+SRC_OBJS=$(SRC:./%=$(OUTPUT_AVR)/src/%.o)
 
-# Create directory if it doesn't exist:
-$(OUTPUT_DIR):
-	@[ -d $(OUTPUT_DIR) ] || mkdir -p $(OUTPUT_DIR)
+OBJS=$(ARDUINO_CORE_OBJS) $(ARDUBOY2_OBJS) $(SRC_OBJS)
 
-# Compile *.cpp files:
-$(OUTPUT_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp
-	@$(call compile,$<,$@,$(CPP),$(CPPFLAGS) -I$(ARDUBOY2_DIR))
-
-# Link everything together:
-compile: $(OUTPUT_DIR) core arduboy2 $(OBJ)
-	@$(CPP) $(LDFLAGS) -o $(OUTPUT_DIR)/$(TARGET).elf $(OBJ)
-	@echo 'The project $(TARGET) has been built successfully'
-
-compile_commands.objs: compile
-
-compile_commands.json: clean compile_commands.objs
+# Convert the file with compile objects to the valid compile database file:
+compile_commands.json: init $(OBJS)
+	@rm -f compile_commands.json
+	@cp $(OUTPUT_DIR)/compile_commands.objs $(OUTPUT_DIR)/compile_commands.objs.tmp
 	@# Add a comma to the end of every line except the last one:
-	@sed  -i'' -e '$!s/$$/,/' $(OUTPUT_DIR)/compile_commands.objs
+	@sed  -i'' -e '$!s/$$/,/' $(OUTPUT_DIR)/compile_commands.objs.tmp
 	@# Open array declaration:
-	@sed  -i'' -e '1s/^/[\n/' $(OUTPUT_DIR)/compile_commands.objs
+	@sed  -i'' -e '1s/^/[\n/' $(OUTPUT_DIR)/compile_commands.objs.tmp
 	@# Close array declaration:
-	@echo ']' >> $(OUTPUT_DIR)/compile_commands.objs
-	@# Move the completed compile_commands.json to the pwd:
-	@mv $(OUTPUT_DIR)/compile_commands.objs compile_commands.json
-	@echo 'The file compile_commands.json has been created'
+	@echo ']' >> $(OUTPUT_DIR)/compile_commands.objs.tmp
+	@# Move the completed compile_commands.json to the cwd:
+	@mv $(OUTPUT_DIR)/compile_commands.objs.tmp compile_commands.json
+	@echo 'The file compile_commands.json has been updated'
+
+# Build the binary file for arduboy:
+.PHONY: compile
+compile: compile_commands.json
+	@$(CPP) $(LDFLAGS) -o $(OUTPUT_DIR)/$(TITLE).elf $(OBJS)
+	@echo 'The project $(TITLE) has been built successfully'
+
+
+#==================================================	
+#            Compile and run tests
+#==================================================	
+
+ifdef LOCAL_TEST
+
+TEST_SRC=$(shell cd $(TEST_DIR); find . -name '*.cpp' -or -name '*.c')
+
+# List of objects with tests:
+TEST_OBJS=$(TEST_SRC:./%=$(OUTPUT_DEV)/test/%.o)
+
+ifdef TEST_FRAMEWORK_DIR
+# Sources of the test framework.
+TEST_FRAMEWORK_SRC:=$(shell cd $(TEST_FRAMEWORK_DIR); find . -name '*.cpp' -or -name '*.c')
+
+# Plus list of test framework objects:
+TEST_OBJS+=$(TEST_FRAMEWORK_SRC:./%=$(OUTPUT_DEV)/libs/test_framework/%.o)
+endif
+
+# We must be sure that for every source file a file with dependencies already
+# generated:
+DEPS_FILES=$($(OBJS):%.o=%.d)
+
+# To run tests locally, we have to find all src files which are not depend on Arduino:
+RECOMPILE_DEPS=$(shell grep --include=\*.d -R '$(OUTPUT_AVR)' -LRe 'arduino')
+
+# Plus list of recompiled objects:
+# (Here we create a list of object files inside DEV output directory.
+# To build such files the different compilers will be used (not avr))
+TEST_OBJS+=$(RECOMPILE_DEPS:$(OUTPUT_AVR)/%.d=$(OUTPUT_DEV)/%.o)
+
+.PHONY: test
+test: $(DEPS_FILES) $(TEST_OBJS) compile_commands.json
+	@echo 'Run tests:'
+	@$(GCPP) $(ASANFLAGS) -o $(OUTPUT_DEV)/test.out $(TEST_OBJS) -lm
+	@$(OUTPUT_DEV)/test.out
+	@echo 'Memory check and tests passed'
+else
+
+.PHONY: test
+test:
+	@echo 'You have to set the LOCAL_TEST variabe to run local tests.'
+	@echo 'Note: test should not depends on arduino sources!'
+
+endif
+
+
+#==================================================	
+#            Build and upload the hex file
+#==================================================	
+
+hex_size_percent=$(AVR_SIZE) -A $(OUTPUT_DIR)/$(TITLE).hex | grep Total |  \
+		 awk '{ print "The size of the $(TITLE).hex is "$$2" bytes \
+		 from maximum $(MAXIMUM_SIZE) bytes 			   \
+		 ("int($$2 * 100 / $(MAXIMUM_SIZE)) "%)" }'
 
 # Create the hex file:
 # -j 	- Copy only the named section from the input file to the output file.
 # -R 	- Remove any section named sectionname from the output file.
-hex: compile
+.PHONY: build
+build: compile
 	@$(OBJCPY) -O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings \
-		--change-section-lma .eeprom=0 $(OUTPUT_DIR)/$(TARGET).elf $(OUTPUT_DIR)/$(TARGET).eep
-	@$(OBJCPY) -O ihex -R .eeprom $(OUTPUT_DIR)/$(TARGET).elf $(OUTPUT_DIR)/$(TARGET).hex
-	@$(AVR_DIR)/avr-size -A $(OUTPUT_DIR)/$(TARGET).hex
+		--change-section-lma .eeprom=0 $(OUTPUT_DIR)/$(TITLE).elf $(OUTPUT_DIR)/$(TITLE).eep
+	$(OBJCPY) -O ihex -R .eeprom $(OUTPUT_DIR)/$(TITLE).elf $(OUTPUT_DIR)/$(TITLE).hex
+	@$(call hex_size_percent)
 
-# Run the final hex file in the emulator:
-emulate: hex
-	$(ARDENS) file=$(OUTPUT_DIR)/$(TARGET).hex
+size: build
+	@$(AVR_SIZE) -A $(OUTPUT_DIR)/$(TITLE).elf $(OUTPUT_DIR)/$(TITLE).hex
+	@echo 'Maximum binary size is $(MAXIMUM_SIZE)'
+	@echo 'Maximum data size is $(MAXIMUM_DATA_SIZE)'
 
-size: hex
-	@$(AVR_DIR)/avr-size -A $(OUTPUT_DIR)/$(TARGET).hex
-
-upload: hex
+.PHONY: upload
+upload: build
 	@echo 'Not implemented yet'
 
+
+#==================================================	
+#                 Run in emulator
+#==================================================	
+
+.PHONY: emulate
+ifdef ARDENS
+# Run the final hex file in the emulator:
+emulate: build
+	$(ARDENS)$(ARDENS_MODE) file=$(OUTPUT_DIR)/$(TITLE).hex
+else
+emulate:
+	@echo 'Please, specify the path to the ArdensPlayer.'
+endif
+#==================================================	
+
 # Clean up the project:
+.PHONY: clean
 clean:
 	rm -f compile_commands.json
 	rm -rf $(OUTPUT_DIR)
 
-build: clean compile_commands.json hex
+.PHONY: all
+all: clean init build
 
-.PHONY: build compile hex emulate size upload clean
-.DEFAULT_GOAL := build
+.DEFAULT_GOAL := all

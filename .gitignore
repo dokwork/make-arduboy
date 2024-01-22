@@ -1,4 +1,5 @@
 .cache/
 output/
+libs/
 compile_commands.json
 imgui.ini
